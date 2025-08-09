@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is an enhanced cryptocurrency dashboard that displays comprehensive market indicators and trends with live charting capabilities. The application provides real-time data about the crypto market including total market capitalization, Bitcoin dominance, Fear & Greed index, Altcoin Season Index, and worldwide Coinbase app rankings. Features include interactive charts showing data variation over time and direct links to Google Trends analysis. It's designed as a single-page application that aggregates multiple data sources into a clean, responsive interface with Chart.js visualizations.
+This is an enhanced cryptocurrency dashboard that displays comprehensive market indicators and trends with live charting capabilities. The application features a spectacular introduction page showcasing "The Greatest of All Time: Nuno Vieira Gonçalves" with premium UI design, followed by a professional dashboard showing real-time crypto market data including total market capitalization, Bitcoin dominance, Fear & Greed index, Altcoin Season Index, and worldwide Bitcoin search trends. Features include interactive charts with 1-year historical data, status indicators, smooth navigation between intro and dashboard pages, and modern glass-morphism design with animated elements.
 
 ## User Preferences
 
@@ -44,10 +44,14 @@ Preferred communication style: Simple, everyday language.
 - **Chart.js** (`cdn.jsdelivr.net`) - Interactive charting library for real-time data visualization
 
 ### New Features Added
+- **Spectacular Introduction Page** - Premium landing page celebrating "The Greatest of All Time: Nuno Vieira Gonçalves" with animated background blobs, crown icon, and professional typography
+- **Smooth Page Navigation** - Seamless transitions between introduction and dashboard with "Enter Dashboard" and "Back to Intro" buttons
+- **Modern Glass-Morphism UI** - Enhanced design with backdrop blur effects, gradient backgrounds, hover animations, and professional card layouts
+- **Status Indicators** - Color-coded badges for Fear & Greed Index (Extreme Fear/Fear/Neutral/Greed/Extreme Greed) and Altcoin Season Index (BTC Season/Mixed Market/ALT Season)
 - **Altcoin Season Index** - Calculated indicator based on Bitcoin dominance to estimate altcoin market phase
 - **Historical Data Charts** - Four interactive charts displaying 365 days (1 year) of historical trends with moving averages
 - **Moving Average Smoothing** - Charts use 14-day and 21-day moving averages to reduce variance and show cleaner trends
-- **Data Persistence** - Historical chart data loaded from APIs for comprehensive trend analysis
+- **Enhanced Error Handling** - Improved API retry logic and loading states to prevent "API Error" messages
 
 ### Browser APIs
 - **Fetch API** - For making HTTP requests to external services
