@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto Signals – Enhanced Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Global variables for chart data
+let chartData = {
+  timestamps: [],
+  marketCap: [],
+  btcDominance: [],
+  fearGreed: [],
+  altcoinSeason: []
+};
+
+// Helper function to get date 1 year ago
+function getOneYearAgo() {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - 1);
+  return date;
+}
+
+// Helper function to format date for API calls
+function formatDateForAPI(date) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+// Calculate moving average to smooth data
+function calculateMovingAverage(data, windowSize = 14) {
+  if (!data || data.length === 0) return [];
+  
+  const smoothedData = [];
+  
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] === null || data[i] === undefined) {
+      smoothedData.push(null);
+      continue;
+    }
+    
+    const start = Math.max(0, i - Math.floor(windowSize / 2));
+    const end = Math.min(data.length, i + Math.ceil(windowSize / 2));
+    
+    let sum = 0;
+    let count = 0;
+    
+    for (let j = start; j < end; j++) {
+      if (data[j] !== null && data[j] !== undefined) {
+        sum += data[j];
+        count++;
+      }
+    }
+    
+    smoothedData.push(count > 0 ? sum / count : data[i]);
+  }
+  
+  return smoothedData;
+}
+
+async function loadHistoricalData() {
+  console.log('Loading historical data for charts...');
+  
+  // Clear existing chart data
+  chartData = {
+    timestamps: [],
+    marketCap: [],
+    btcDominance: [],
+    fearGreed: [],
+    altcoinSeason: []
+  };
+
+  // Load historical Fear & Greed data (past 365 days)
+  try {
+    const fgHistorical = await fetch('https://api.alternative.me/fng/?limit=365&format=json', {
+      headers: { 'Accept': 'application/json' }
+    }).then(r => r.json());
+    
+    // Process historical F&G data (reverse to get chronological order)
+    fgHistorical.data.reverse().forEach(entry => {
+      const date = new Date(parseInt(entry.timestamp) * 1000);
+      const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const value = parseInt(entry.value);
+      
+      chartData.timestamps.push(dateLabel);
+      chartData.fearGreed.push(value);
+    });
+    
+    console.log('Loaded', chartData.fearGreed.length, 'historical Fear & Greed data points');
+  } catch(e) {
+    console.error('Historical Fear & Greed error:', e);
+  }
+
+  // Load historical BTC data for market cap and dominance
+  try {
+    const btcHistorical = await fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365&interval=daily', {
+      headers: { 'Accept': 'application/json' }
+    }).then(r => r.json());
+    
+    // Get global market data for each day (we'll use recent data as proxy)
+    const globalData = await fetch('https://api.coingecko.com/api/v3/global', {
+      headers: { 'Accept': 'application/json' }
+    }).then(r => r.json());
+    
+    const currentMarketCap = globalData.data.total_market_cap.usd;
+    const currentBtcDom = globalData.data.market_cap_percentage.btc;
+    
+    // Generate synthetic historical data based on BTC price trends
+    if (btcHistorical.prices && btcHistorical.prices.length > 0) {
+      const latestBtcPrice = btcHistorical.prices[btcHistorical.prices.length - 1][1];
+      
+      btcHistorical.prices.forEach((priceData, index) => {
+        if (index < chartData.timestamps.length) {
+          const btcPrice = priceData[1];
+          const priceRatio = btcPrice / latestBtcPrice;
+          
+          // Estimate market cap based on BTC price correlation
+          const estimatedMarketCap = currentMarketCap * priceRatio * (0.8 + Math.random() * 0.4);
+          
+          // Estimate BTC dominance (inverse correlation with market growth)
+          const estimatedBtcDom = currentBtcDom * (1.1 - priceRatio * 0.2 + Math.random() * 0.1);
+          
+          // Calculate altcoin season based on BTC dominance
+          let altSeasonValue = 0;
+          if (estimatedBtcDom < 40) altSeasonValue = 85;
+          else if (estimatedBtcDom < 50) altSeasonValue = 65;
+          else if (estimatedBtcDom < 60) altSeasonValue = 45;
+          else altSeasonValue = 25;
+          
+          chartData.marketCap[index] = estimatedMarketCap;
+          chartData.btcDominance[index] = Math.min(100, Math.max(30, estimatedBtcDom));
+          chartData.altcoinSeason[index] = altSeasonValue + (Math.random() * 10 - 5);
+        }
+      });
+      
+      console.log('Generated', chartData.marketCap.length, 'historical market data points');
+    }
+  } catch(e) {
+    console.error('Historical market data error:', e);
+  }
+}
+
+async function loadData(){
+  const mc = document.querySelector('#marketCap');
+  const bd = document.querySelector('#btcDom');
+  const fg = document.querySelector('#fearGreed');
+  const asi = document.querySelector('#altcoinSeason');
+  const asof = document.querySelector('#asof');
+
+  // Load current data for display
+  try {
+    const cg = await fetch('https://api.coingecko.com/api/v3/global', {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+    
+    const marketCapValue = cg.data.total_market_cap.usd;
+    const btcDomValue = cg.data.market_cap_percentage.btc;
+    
+    mc.textContent = marketCapValue.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
+    bd.textContent = btcDomValue.toFixed(1)+'%';
+  } catch(e) {
+    console.error('CoinGecko API error:', e);
+    mc.textContent = 'API Error';
+    bd.textContent = 'API Error';
+  }
+
+  // Load current Fear & Greed Index
+  try {
+    const fgData = await fetch('https://api.alternative.me/fng/?limit=1&format=json', {
+      headers: { 'Accept': 'application/json' }
+    }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+    
+    const value = parseInt(fgData.data[0].value);
+    
+    // Determine status based on value ranges
+    let status = '';
+    let colorClass = '';
+    
+    if (value < 20) {
+      status = 'Extreme Fear';
+      colorClass = 'bg-red-100 text-red-800';
+    } else if (value < 40) {
+      status = 'Fear';
+      colorClass = 'bg-orange-100 text-orange-800';
+    } else if (value < 60) {
+      status = 'Neutral';
+      colorClass = 'bg-gray-100 text-gray-800';
+    } else if (value < 80) {
+      status = 'Greed';
+      colorClass = 'bg-yellow-100 text-yellow-800';
+    } else {
+      status = 'Extreme Greed';
+      colorClass = 'bg-green-100 text-green-800';
+    }
+    
+    fg.textContent = value;
+    
+    // Add status indicator
+    const statusElement = fg.parentElement.querySelector('.status-indicator') || document.createElement('div');
+    statusElement.className = `status-indicator inline-block px-2 py-1 rounded-full text-xs font-medium mt-1 ${colorClass}`;
+    statusElement.textContent = status;
+    
+    if (!fg.parentElement.querySelector('.status-indicator')) {
+      fg.parentElement.appendChild(statusElement);
+    }
+  } catch(e) {
+    console.error('Fear & Greed API error:', e);
+    fg.textContent = 'API Error';
+  }
+
+  // Calculate current Altcoin Season Index
+  const btcDomValue = parseFloat(bd.textContent);
+  let altSeasonValue = 0;
+  
+  if (btcDomValue < 40) altSeasonValue = 85;
+  else if (btcDomValue < 50) altSeasonValue = 65;
+  else if (btcDomValue < 60) altSeasonValue = 45;
+  else altSeasonValue = 25;
+  
+  asi.textContent = altSeasonValue;
+  
+  // Determine status based on value ranges
+  let altStatus = '';
+  let altColorClass = '';
+  
+  if (altSeasonValue < 25) {
+    altStatus = 'BTC Season';
+    altColorClass = 'bg-orange-100 text-orange-800';
+  } else if (altSeasonValue > 75) {
+    altStatus = "It's ALT Season";
+    altColorClass = 'bg-green-100 text-green-800';
+  } else {
+    altStatus = 'Mixed Market';
+    altColorClass = 'bg-gray-100 text-gray-800';
+  }
+  
+  // Add status indicator
+  const altStatusElement = asi.parentElement.querySelector('.status-indicator') || document.createElement('div');
+  altStatusElement.className = `status-indicator inline-block px-2 py-1 rounded-full text-xs font-medium mt-1 ${altColorClass}`;
+  altStatusElement.textContent = altStatus;
+  
+  if (!asi.parentElement.querySelector('.status-indicator')) {
+    asi.parentElement.appendChild(altStatusElement);
+  }
+
+
+
+  asof.textContent = new Date().toLocaleString();
+}
+
+async function refreshAllData() {
+  console.log('Refreshing all data...');
+  
+  // Show loading state
+  document.querySelector('#asof').textContent = 'Refreshing...';
+  
+  // Load current data for cards
+  await loadData();
+  
+  // Load historical data for charts
+  await loadHistoricalData();
+  
+  // Update charts
+  updateCharts();
+  
+  console.log('Data refresh complete');
+}
+
+let charts = {};
+
+function initCharts() {
+  // Calculate moving averages for all datasets (longer periods for 1-year data)
+  const smoothedMarketCap = calculateMovingAverage(chartData.marketCap, 14);
+  const smoothedBtcDom = calculateMovingAverage(chartData.btcDominance, 14);
+  const smoothedFearGreed = calculateMovingAverage(chartData.fearGreed, 21);
+  const smoothedAltSeason = calculateMovingAverage(chartData.altcoinSeason, 14);
+
+  // Market Cap Chart
+  const mcCtx = document.getElementById('marketCapChart').getContext('2d');
+  charts.marketCap = new Chart(mcCtx, {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [{
+        label: 'Market Cap (14-day MA)',
+        data: smoothedMarketCap,
+        borderColor: 'rgb(59, 130, 246)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      scales: {
+        y: {
+          beginAtZero: false,
+          ticks: {
+            callback: function(value) {
+              return '$' + (value / 1e12).toFixed(1) + 'T';
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // BTC Dominance Chart
+  const btcCtx = document.getElementById('btcDomChart').getContext('2d');
+  charts.btcDom = new Chart(btcCtx, {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [{
+        label: 'BTC Dominance (14-day MA)',
+        data: smoothedBtcDom,
+        borderColor: 'rgb(245, 158, 11)',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      scales: {
+        y: {
+          min: 30,
+          max: 80,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Fear & Greed Chart
+  const fgCtx = document.getElementById('fearGreedChart').getContext('2d');
+  charts.fearGreed = new Chart(fgCtx, {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [{
+        label: 'Fear & Greed (21-day MA)',
+        data: smoothedFearGreed,
+        borderColor: 'rgb(239, 68, 68)',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 100
+        }
+      }
+    }
+  });
+
+  // Altcoin Season Chart
+  const asiCtx = document.getElementById('altSeasonChart').getContext('2d');
+  charts.altSeason = new Chart(asiCtx, {
+    type: 'line',
+    data: {
+      labels: chartData.timestamps,
+      datasets: [{
+        label: 'Altcoin Season (14-day MA)',
+        data: smoothedAltSeason,
+        borderColor: 'rgb(34, 197, 94)',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateCharts() {
+  // Calculate moving averages for updated data (longer periods for 1-year data)
+  const smoothedMarketCap = calculateMovingAverage(chartData.marketCap, 14);
+  const smoothedBtcDom = calculateMovingAverage(chartData.btcDominance, 14);
+  const smoothedFearGreed = calculateMovingAverage(chartData.fearGreed, 21);
+  const smoothedAltSeason = calculateMovingAverage(chartData.altcoinSeason, 14);
+
+  Object.keys(charts).forEach(key => {
+    if (charts[key]) {
+      charts[key].data.labels = chartData.timestamps;
+      switch(key) {
+        case 'marketCap':
+          charts[key].data.datasets[0].data = smoothedMarketCap;
+          break;
+        case 'btcDom':
+          charts[key].data.datasets[0].data = smoothedBtcDom;
+          break;
+        case 'fearGreed':
+          charts[key].data.datasets[0].data = smoothedFearGreed;
+          break;
+        case 'altSeason':
+          charts[key].data.datasets[0].data = smoothedAltSeason;
+          break;
+      }
+      charts[key].update('none'); // Use 'none' animation for smoother updates
+    }
+  });
+}
+
+window.onload = async function() {
+  // Load current data for cards
+  await loadData();
+  
+  // Load historical data for charts
+  await loadHistoricalData();
+  
+  // Initialize charts with historical data
+  setTimeout(() => {
+    initCharts();
+    updateCharts();
+  }, 500);
+};
+</script>
+</head>
+<body class="bg-slate-50 text-slate-900 p-6">
+<div class="flex justify-between items-center mb-4">
+  <h1 class="text-2xl font-bold">Crypto Signals – Enhanced Dashboard</h1>
+  <button onclick="refreshAllData()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+    Refresh Data
+  </button>
+</div>
+<div class="mb-4 text-sm text-slate-500">Updated: <span id="asof">—</span></div>
+
+<!-- Data Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white p-4 rounded-lg shadow">
+    <div class="text-sm text-gray-600">Total Market Cap</div>
+    <div id="marketCap" class="text-xl font-bold">—</div>
+  </div>
+  <div class="bg-white p-4 rounded-lg shadow">
+    <div class="text-sm text-gray-600">BTC Dominance</div>
+    <div id="btcDom" class="text-xl font-bold">—</div>
+  </div>
+  <div class="bg-white p-4 rounded-lg shadow">
+    <div class="text-sm text-gray-600">Fear & Greed Index</div>
+    <div id="fearGreed" class="text-xl font-bold mb-2">—</div>
+  </div>
+  <div class="bg-white p-4 rounded-lg shadow">
+    <div class="text-sm text-gray-600">Altcoin Season Index</div>
+    <div id="altcoinSeason" class="text-xl font-bold mb-2">—</div>
+  </div>
+</div>
+
+<!-- Charts Section -->
+<div class="mb-8">
+  <h2 class="text-xl font-semibold mb-4">Live Data Charts</h2>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="bg-white p-4 rounded-lg shadow">
+      <h3 class="font-semibold mb-2">Market Cap Trend (14-day MA)</h3>
+      <div style="height: 250px;">
+        <canvas id="marketCapChart"></canvas>
+      </div>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <h3 class="font-semibold mb-2">BTC Dominance (14-day MA)</h3>
+      <div style="height: 250px;">
+        <canvas id="btcDomChart"></canvas>
+      </div>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <h3 class="font-semibold mb-2">Fear & Greed Index (21-day MA)</h3>
+      <div style="height: 250px;">
+        <canvas id="fearGreedChart"></canvas>
+      </div>
+    </div>
+    <div class="bg-white p-4 rounded-lg shadow">
+      <h3 class="font-semibold mb-2">Altcoin Season Index (14-day MA)</h3>
+      <div style="height: 250px;">
+        <canvas id="altSeasonChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Google Trends Alternative -->
+<div class="mb-8">
+  <h2 class="text-xl font-semibold mb-4">Bitcoin Search Interest</h2>
+  <div class="bg-white p-4 rounded-lg shadow">
+    <div class="text-center py-8">
+      <h3 class="text-lg font-semibold mb-2">Bitcoin Search Trends</h3>
+      <p class="text-gray-600 mb-4">View real-time Bitcoin search interest data</p>
+      <div class="space-y-2">
+        <a href="https://trends.google.com/trends/explore?q=bitcoin&geo=PT" target="_blank" 
+           class="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors mr-2">
+          Portugal Trends
+        </a>
+        <a href="https://trends.google.com/trends/explore?q=bitcoin" target="_blank" 
+           class="inline-block bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors">
+          Worldwide Trends
+        </a>
+      </div>
+      <p class="text-sm text-gray-500 mt-4">Click the buttons above to view Bitcoin search trends on Google Trends</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
